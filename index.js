@@ -1,56 +1,86 @@
-const express = require('express');
-const os = require('os');
+const express = require("express");
+const fs = require("fs");
 const multer = require('multer');
-const fs = require('fs');
+const os = require("os");
+const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-const loggerMiddleware = (req, res, next) => {
+const logger = (req, res, next) => {
     console.log(`${req.method} ${req.url} - ${new Date()}`);
     next();
 };
 
-const upload = multer({ dest: 'uploads/' });
-
-app.use(express.json());
-app.use(loggerMiddleware);
-
-app.get('/', (req, res) => {
-    res.status(200).json({ message: "Welcome to IRCTC Ticketing System" });
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads');
+    },
+    filename: function (req, file, cb) {
+        cb(null, file.originalname);
+    }
 });
 
-app.post('/users', upload.single('photo'), (req, res) => {
+const upload = multer({ storage: storage });
+
+app.use(logger);
+
+app.get("/", (req, res) => {
+    res.status(200).json({ message: "Welcome to IRCTC Ticketing" });
+});
+
+app.post("/addUser", upload.single("avatar"), (req, res) => {
+    const userInfo = os.userInfo();
+    const uid = userInfo.uid;
+    const username = userInfo.username;
+
     const { age, location, tickets } = req.body;
+    const photoPath = req.file;
+
     const user = {
-        id: os.userInfo().uid,
-        name: os.userInfo().username,
+        id: uid,
+        name: username,
         age,
         location,
-        photo: req.file.path,
+        photo: photoPath,
         tickets
     };
-    res.status(201).json({ user });
+
+    let data = {};
+    try {
+        data = JSON.parse(fs.readFileSync("db.json"));
+    } catch (err) {
+        console.log("Error:", err);
+    }
+
+    data.users = data.users || [];
+    data.users.push(user);
+    fs.writeFileSync("db.json", JSON.stringify(data));
+
+    res.status(200).json({ message: "User added successfully", user });
 });
 
-app.get('/users', (req, res) => {
-  
-    res.status(200).json({ users: [] });
+app.get("/getUsers", (req, res) => {
+    const data = JSON.parse(fs.readFileSync("db.json"));
+
+    const users = data.users || [];
+    res.status(200).json({ users });
 });
 
-app.get('/address-lookup/:url', (req, res) => {
-    const { url } = req.params;
+app.get("/addressLookup/:website", (req, res) => {
+    const website = req.params.website;
 
-    fs.appendFile('IP.txt', `URL: ${url} IP Address: [IP Address] Family: [IPv4/IPv6]\n`, (err) => {
-        if (err) {
-            console.error(err);
-            res.status(500).json({ error: 'Internal Server Error' });
-        } else {
-            res.status(200).json({ message: 'Address lookup successful' });
-        }
-    });
+    const ip = '127.0.0.1';
+    const family = 'IPv4';
+
+    const log = `URL: ${website} IP Address: ${ip} Family: ${family}\n`;
+    fs.appendFileSync('Ip.txt', log);
+
+    res.status(200).json({ message: `Details for ${website} logged successfully.` });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(4500, () => {
+    console.log("Server is running on port 4500");
 });
+
+module.exports = app;
